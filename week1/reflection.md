@@ -2,3 +2,5 @@ Going through the last commit on one of my repos (42_Python_Projects) I learned 
 
 ![Git reflog](./picture.png)
 
+The pull request for the rebase task: [Pull Request](https://github.com/AhmadNajiKam/42_Python_Projects/pull/1)
+
