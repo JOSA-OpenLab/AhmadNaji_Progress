@@ -1,7 +1,8 @@
 ## Task1
 I found a big PR that's a refactoring PR for woodpecker repo, I've seen a couple of problems and I chose one which was about correctness and the second one is about defensive programming bad decisions (design-wise).
-[PR Comment 1](https://github.com/woodpecker-ci/woodpecker/pull/6779#issuecomment-4818811041)
-[PR Comment 2](https://github.com/woodpecker-ci/woodpecker/pull/6779#issuecomment-4818921519)
+[PR One Comment 1](https://github.com/woodpecker-ci/woodpecker/pull/6779#issuecomment-4818811041)
+[PR One Comment 2](https://github.com/woodpecker-ci/woodpecker/pull/6779#issuecomment-4818921519)
+[PR Two Comment](https://github.com/woodpecker-ci/woodpecker/issues/6740#issuecomment-4827081083)
 
 ## Task2
 For this [PR](https://github.com/woodpecker-ci/woodpecker/pull/6414), and even though it's not a bad PR on it's own, I made a bad communication decisions with the maintainers when one asked me about adding a support for a feature [HERE](https://github.com/woodpecker-ci/woodpecker/pull/6414#discussion_r3062879442), I have said that I will do it in a couple of days (which is wrong since I was really busy that week), this lead the maintainer think I ghosted him and he did implement the feature instead.
