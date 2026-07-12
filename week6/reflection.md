@@ -1,7 +1,8 @@
 ## [Task1](https://github.com/mdn/content/pull/44685#issue-4864715811)
 Here I edited a text in MDN docs that isn't right according to the image provided, this thing should fool anyone who's reading the text thus suspecting one of them is wrong.
 
-## [Task2]()
+## [Task2](https://ahmadnajikam.github.io/42_Python_Projects/)
+I setup a doc-site for my python project with the help of Claude to make writing faster, I focused on some projects not all just as a proof of concept not trying to make things perfect.
 
 ## [Task3](https://github.com/AhmadNajiKam/42_Python_Projects/commit/1216bd8e3228853e0bbe0d4aa94aa3c6b399c3e6)
 I made sure that my decision about making an inner function to be used with one decorator (that was designed badly by the subject writers) is well documented through and ADR file.
