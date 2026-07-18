@@ -90,4 +90,4 @@ I'll check if I can rely on Dependabot to handle the dependency updates itself, 
 
 
 ## Task 4
-
+To keep it short, I checked a repo using Openssf scorecard checker and I found some vulnerabilities, I managed to solve some of them without breaking the existing code (I updated the needed packages to solve some), the pr is [HERE](https://github.com/meshery/meshery/pull/20779)
