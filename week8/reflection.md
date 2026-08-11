@@ -153,3 +153,118 @@ These examples also reinforce the workflow I used in Woodpecker: profile first, 
 
 # Task4:
 
+For the debugger exercise, I selected my [FPC repository] a private repo whose primary language is Go. The appropriate debugger was **Delve**, Go's debugger, invoked through the `dlv` command. I selected the isolated `packages/vote/fpc` package because it has focused tests and a small enough execution path to understand completely.
+
+### Bug selected
+
+The bug was a deadlock in `FPC.finalizeOpinions` me and the boys found 1 year ago.
+
+The original implementation acquired `ctxsMu` and kept it locked while triggering the `Finalized` or `Failed` event:
+
+```go
+f.ctxsMu.Lock()
+defer f.ctxsMu.Unlock()
+
+f.events.Finalized.Trigger(event)
+```
+
+Event handlers execute synchronously. Therefore, if a finalized-event handler called a normal public method such as `Vote`, that method attempted to acquire `ctxsMu` again. The event handler waited for the mutex, while `finalizeOpinions` waited for the event handler to return. This created a deadlock.
+
+### Reproducing the bug
+
+I added a regression test called `TestFinalizedEventCanEnqueueAnotherVote`. The test registers a finalized-event handler that enqueues another vote:
+
+```go
+voter.Events().Finalized.Attach(events.NewClosure(func(event *vote.OpinionEvent) {
+    eventResult <- voter.Vote("second", vote.ConflictType, opinion.Like)
+}))
+```
+
+The test then executes two rounds. The first round queries the opinion giver. The second round finalizes the first vote and invokes the event handler.
+
+Before the fix, the test failed because the second round never completed:
+
+```text
+--- FAIL: TestFinalizedEventCanEnqueueAnotherVote (0.50s)
+    finalization_event_test.go:50: round did not complete while handling the finalized event
+```
+
+No print statements were added to diagnose the problem. The test used a timeout and assertions to expose the deadlock.
+
+### Delve debugging session
+
+The regression test file must first be copied into `packages/vote/fpc/` in the local clone. The production fix must not be applied yet, because the debugger needs to observe the original deadlock. For the interactive session, I temporarily changed both internal waits in the regression test from 500 milliseconds to five minutes; otherwise the test exits while execution is paused at the breakpoint. From the repository root, the debugger session is:
+
+```bash
+cd /path/to/FPC
+dlv test ./packages/vote/fpc \
+  --build-flags='-mod=mod' -- \
+  -test.run '^TestFinalizedEventCanEnqueueAnotherVote$' \
+  -test.count=1 -test.timeout=10m
+```
+
+Inside Delve, a file-and-line breakpoint is more reliable than a long method-name breakpoint. In the original source, line 199 is the `Finalized.Trigger` call:
+
+```text
+(dlv) break packages/vote/fpc/fpc.go:199
+(dlv) continue
+(dlv) list
+(dlv) next
+(dlv) goroutines
+(dlv) goroutine <id-of-the-blocked-goroutine>
+(dlv) stack
+```
+
+The `next` command will hang while the event handler tries to acquire the already-held mutex. Press `Ctrl-C` in the Delve terminal to interrupt the running program, then issue the `goroutines` and `stack` commands; do not type `interrupt` as a Delve command. If line 199 differs in a local checkout, use `list` to locate the `f.events.Finalized.Trigger(...)` line and set the breakpoint there instead.
+
+I completed the interactive Delve session on my local machine. Delve stopped at `fpc.go:199`, where `finalizeOpinions` invoked `Finalized.Trigger` while the deferred `ctxsMu.Unlock()` had not run. After executing `next`, the program hung. I pressed `Ctrl-C`, selected the blocked goroutine, and obtained this relevant stack:
+
+```text
+sync.runtime_SemacquireRWMutexR
+sync.(*RWMutex).RLock
+fpc.(*FPC).Vote                         fpc.go:80
+TestFinalizedEventCanEnqueueAnotherVote.func3
+vote.OpinionCaller
+events.(*Event).Trigger
+fpc.(*FPC).finalizeOpinions             fpc.go:199
+fpc.(*FPC).Round                        fpc.go:122
+```
+
+The stack proves the lock cycle. `finalizeOpinions` still owns the write lock and synchronously invokes the event handler through `Event.Trigger`. The handler calls `Vote`, which reaches `ctxsMu.RLock()` and waits in `runtime_SemacquireRWMutexR`. The handler cannot return until it obtains the read lock, while `finalizeOpinions` cannot release the write lock until the handler returns. This is the deadlock's root cause.
+
+After capturing the stack, I restored the regression test's internal waits to 500 milliseconds before applying and verifying the production fix.
+
+### Fix
+
+I changed `finalizeOpinions` so that it:
+
+1. Acquires `ctxsMu` and identifies finalized or failed votes.
+2. Copies the event data and removes those votes while the mutex is held.
+3. Releases `ctxsMu`.
+4. Triggers the events only after releasing the mutex.
+
+This preserves the event snapshot while ensuring event handlers can safely call public voter methods, including `Vote` and `IntermediateOpinion`.
+
+### Verification
+
+The following checks passed after the change:
+
+```bash
+go test ./packages/vote/fpc -run '^TestFinalizedEventCanEnqueueAnotherVote$' -count=1
+go test ./packages/vote/fpc
+go test -race ./packages/vote/fpc
+go test ./packages/vote/...
+go vet ./packages/vote/...
+```
+
+The new regression test passes, the existing FPC tests remain green, and the race-enabled test run reports no race. The module also required the missing checksum for `gopkg.in/yaml.v3 v3.0.1` in `go.sum` before clean test execution could succeed.
+
+### Main lesson
+
+Locks should protect state changes, not synchronous callbacks. Holding a mutex while invoking application-level event handlers creates a re-entrancy hazard: the handler may call back into the same component and request the lock that the original operation still owns.
+
+The debugging workflow was:
+
+```text
+Create a focused failing test → reproduce the hang → stop at the event boundary → inspect the lock path → move callbacks outside the lock → rerun tests and the race detector
+```
